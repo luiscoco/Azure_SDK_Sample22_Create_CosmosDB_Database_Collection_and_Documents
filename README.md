@@ -1,47 +1,350 @@
----
-languages:
-- csharp
-products:
-- azure
-- azure-cosmos-db
-- dotnet
-page_type: sample
-description: "This sample shows you how to use the Azure Cosmos DB service to store and access data from a .NET console application."
----
+# Azure SDK for .NET: How to create an Azure CosmosDB DataBase, a Collection and populate it with some Documents.
 
-# Developing a .NET console app using Azure Cosmos DB
-This sample shows you how to use the Azure Cosmos DB service to store and access data from a .NET console application.
+## 1. Create an Azure CosmosDB account
 
-For a complete end-to-end walkthrough of creating this application, please refer to the [full tutorial on the Azure Cosmos DB documentation page](https://aka.ms/CosmosDotnetGetStarted).
+See the previous sample for learning how to create an Azure CosmosDB account inside a ResourceGroup previously created:
 
-## Running this sample
+https://github.com/luiscoco/Azure_SDK_Sample21_Create_CosmosDB_account
 
-1. Before you can run this sample, you must have the following prerequisites:
-	- An active Azure Cosmos DB account - If you don't have an account, refer to the [Create a database account](https://docs.microsoft.com/azure/cosmos-db/create-sql-api-dotnet#create-a-database-account) article.
-	- Visual Studio 2015 (or higher).
+## 2.  Copy the CosmosDB account EndpointUri and PrimaryKey in the appSettings.json file
 
-1. Clone this repository using Git for Windows (http://www.git-scm.com/), or download the zip file.
+It is mandatory to set in the appSettings.json file the "**EndpointUri**" and the "**PrimaryKey**" as shown in the following picture
 
-1. From Visual Studio, open the **GetStarted.sln** file from the root directory.
+![image](https://github.com/luiscoco/Azure_SDK_Sample22_Create_CosmosDB_Database_Collection_and_Documents_LEGACY_VERSION/assets/32194879/566552f5-d9d9-4414-bcbb-b023e7ff89fd)
 
-1. In Visual Studio Build menu, select **Build Solution** (or Press F6). 
+```json
+<?xml version="1.0" encoding="utf-8" ?>
+<configuration>
+  <appSettings>
+    <add key="EndpointUri" value="https://newcosmosdbwithazuresdk.documents.azure.com:443/" />
+    <add key="PrimaryKey" value="Pl99OzleSj6V8LySA4h1cX98NjFU7yyG0Nthc8lnanTbnLFj17d7Uwe4NGxSAYXMQDMuQyxeod5EACDbRAUNXQ==" />
+  </appSettings>
+</configuration>
+```
 
-1. Retrieve the URI and PRIMARY KEY (or SECONDARY KEY) values from the Keys blade of your Azure Cosmos DB account in the Azure portal. For more information on obtaining endpoint & keys for your Azure Cosmos DB account refer to [View, copy, and regenerate access keys and passwords](https://docs.microsoft.com/en-us/azure/cosmos-db/manage-account#keys)
+## 3. Input the application source code
 
-If you don't have an account, see [Create a database account](https://docs.microsoft.com/azure/cosmos-db/create-sql-api-dotnet#create-a-database-account) to set one up.
+```csharp
+﻿using System;
+using System.Threading.Tasks;
+using System.Configuration;
+using System.Collections.Generic;
+using System.Net;
+using Microsoft.Azure.Cosmos;
 
-1. In the **App.config** file, located in the src directory, find **EndPointUri** and **PrimaryKey** and replace the placeholder values with the values obtained for your account.
+namespace CosmosGettingStartedTutorial
+{
+    class Program
+    {
+        // The Azure Cosmos DB endpoint for running this sample.
+        private static readonly string EndpointUri = ConfigurationManager.AppSettings["EndPointUri"];
 
-    <add key="EndPointUri" value="~your Azure Cosmos DB endpoint here~" />
-    <add key="PrimaryKey" value="~your auth key here~" />
+        // The primary key for the Azure Cosmos account.
+        private static readonly string PrimaryKey = ConfigurationManager.AppSettings["PrimaryKey"];
 
-1. You can now run and debug the application locally by pressing **F5** in Visual Studio.
+        // The Cosmos client instance
+        private CosmosClient cosmosClient;
 
-## About the code
-The code included in this sample is intended to get you quickly started with a .NET console application that connects to Azure Cosmos DB.
+        // The database we will create
+        private Database database;
 
-## More information
+        // The container we will create.
+        private Container container;
 
-- [Azure Cosmos DB Documentation](https://docs.microsoft.com/azure/cosmos-db/index)
-- [Azure Cosmos DB .NET SDK for SQL API](https://docs.microsoft.com/azure/cosmos-db/sql-api-sdk-dotnet)
-- [Azure Cosmos DB .NET SDK Reference Documentation](https://docs.microsoft.com/dotnet/api/overview/azure/cosmosdb?view=azure-dotnet)
+        // The name of the database and container we will create
+        private string databaseId = "ToDoList";
+        private string containerId = "Items";
+
+        // <Main>
+        public static async Task Main(string[] args)
+        {
+            try
+            {
+                Console.WriteLine("Beginning operations...\n");
+                Program p = new Program();
+                await p.GetStartedDemoAsync();
+
+            }
+            catch (CosmosException de)
+            {
+                Exception baseException = de.GetBaseException();
+                Console.WriteLine("{0} error occurred: {1}", de.StatusCode, de);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("Error: {0}", e);
+            }
+            finally
+            {
+                Console.WriteLine("End of demo, press any key to exit.");
+                Console.ReadKey();
+            }
+        }
+        // </Main>
+
+        // <GetStartedDemoAsync>
+        /// <summary>
+        /// Entry point to call methods that operate on Azure Cosmos DB resources in this sample
+        /// </summary>
+        public async Task GetStartedDemoAsync()
+        {
+            // Create a new instance of the Cosmos Client
+            this.cosmosClient = new CosmosClient(EndpointUri, PrimaryKey, new CosmosClientOptions() { ApplicationName = "CosmosDBDotnetQuickstart" });
+            await this.CreateDatabaseAsync();
+            await this.CreateContainerAsync();
+            await this.ScaleContainerAsync();
+            await this.AddItemsToContainerAsync();
+            await this.QueryItemsAsync();
+            await this.ReplaceFamilyItemAsync();
+            await this.DeleteFamilyItemAsync();
+            await this.DeleteDatabaseAndCleanupAsync();
+        }
+        // </GetStartedDemoAsync>
+
+        // <CreateDatabaseAsync>
+        /// <summary>
+        /// Create the database if it does not exist
+        /// </summary>
+        private async Task CreateDatabaseAsync()
+        {
+            // Create a new database
+            this.database = await this.cosmosClient.CreateDatabaseIfNotExistsAsync(databaseId);
+            Console.WriteLine("Created Database: {0}\n", this.database.Id);
+        }
+        // </CreateDatabaseAsync>
+
+        // <CreateContainerAsync>
+        /// <summary>
+        /// Create the container if it does not exist. 
+        /// Specifiy "/partitionKey" as the partition key path since we're storing family information, to ensure good distribution of requests and storage.
+        /// </summary>
+        /// <returns></returns>
+        private async Task CreateContainerAsync()
+        {
+            // Create a new container
+            this.container = await this.database.CreateContainerIfNotExistsAsync(containerId, "/partitionKey");
+            Console.WriteLine("Created Container: {0}\n", this.container.Id);
+        }
+        // </CreateContainerAsync>
+
+        // <ScaleContainerAsync>
+        /// <summary>
+        /// Scale the throughput provisioned on an existing Container.
+        /// You can scale the throughput (RU/s) of your container up and down to meet the needs of the workload. Learn more: https://aka.ms/cosmos-request-units
+        /// </summary>
+        /// <returns></returns>
+        private async Task ScaleContainerAsync()
+        {
+            // Read the current throughput
+            try
+            {
+                int? throughput = await this.container.ReadThroughputAsync();
+                if (throughput.HasValue)
+                {
+                    Console.WriteLine("Current provisioned throughput : {0}\n", throughput.Value);
+                    int newThroughput = throughput.Value + 100;
+                    // Update throughput
+                    await this.container.ReplaceThroughputAsync(newThroughput);
+                    Console.WriteLine("New provisioned throughput : {0}\n", newThroughput);
+                }
+            }
+            catch (CosmosException cosmosException) when (cosmosException.StatusCode == HttpStatusCode.BadRequest)
+            {
+                Console.WriteLine("Cannot read container throuthput.");
+                Console.WriteLine(cosmosException.ResponseBody);
+            }
+            
+        }
+        // </ScaleContainerAsync>
+
+        // <AddItemsToContainerAsync>
+        /// <summary>
+        /// Add Family items to the container
+        /// </summary>
+        private async Task AddItemsToContainerAsync()
+        {
+            // Create a family object for the Andersen family
+            Family andersenFamily = new Family
+            {
+                Id = "Andersen.1",
+                PartitionKey = "Andersen",
+                LastName = "Andersen",
+                Parents = new Parent[]
+                {
+                    new Parent { FirstName = "Thomas" },
+                    new Parent { FirstName = "Mary Kay" }
+                },
+                Children = new Child[]
+                {
+                    new Child
+                    {
+                        FirstName = "Henriette Thaulow",
+                        Gender = "female",
+                        Grade = 5,
+                        Pets = new Pet[]
+                        {
+                            new Pet { GivenName = "Fluffy" }
+                        }
+                    }
+                },
+                Address = new Address { State = "WA", County = "King", City = "Seattle" },
+                IsRegistered = false
+            };
+
+            try
+            {
+                // Read the item to see if it exists.  
+                ItemResponse<Family> andersenFamilyResponse = await this.container.ReadItemAsync<Family>(andersenFamily.Id, new PartitionKey(andersenFamily.PartitionKey));
+                Console.WriteLine("Item in database with id: {0} already exists\n", andersenFamilyResponse.Resource.Id);
+            }
+            catch(CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                // Create an item in the container representing the Andersen family. Note we provide the value of the partition key for this item, which is "Andersen"
+                ItemResponse<Family> andersenFamilyResponse = await this.container.CreateItemAsync<Family>(andersenFamily, new PartitionKey(andersenFamily.PartitionKey));
+
+                // Note that after creating the item, we can access the body of the item with the Resource property off the ItemResponse. We can also access the RequestCharge property to see the amount of RUs consumed on this request.
+                Console.WriteLine("Created item in database with id: {0} Operation consumed {1} RUs.\n", andersenFamilyResponse.Resource.Id, andersenFamilyResponse.RequestCharge);
+            }
+
+            // Create a family object for the Wakefield family
+            Family wakefieldFamily = new Family
+            {
+                Id = "Wakefield.7",
+                PartitionKey = "Wakefield",
+                LastName = "Wakefield",
+                Parents = new Parent[]
+                {
+                    new Parent { FamilyName = "Wakefield", FirstName = "Robin" },
+                    new Parent { FamilyName = "Miller", FirstName = "Ben" }
+                },
+                Children = new Child[]
+                {
+                    new Child
+                    {
+                        FamilyName = "Merriam",
+                        FirstName = "Jesse",
+                        Gender = "female",
+                        Grade = 8,
+                        Pets = new Pet[]
+                        {
+                            new Pet { GivenName = "Goofy" },
+                            new Pet { GivenName = "Shadow" }
+                        }
+                    },
+                    new Child
+                    {
+                        FamilyName = "Miller",
+                        FirstName = "Lisa",
+                        Gender = "female",
+                        Grade = 1
+                    }
+                },
+                Address = new Address { State = "NY", County = "Manhattan", City = "NY" },
+                IsRegistered = true
+            };
+
+            try
+            {
+                // Read the item to see if it exists
+                ItemResponse<Family> wakefieldFamilyResponse = await this.container.ReadItemAsync<Family>(wakefieldFamily.Id, new PartitionKey(wakefieldFamily.PartitionKey));
+                Console.WriteLine("Item in database with id: {0} already exists\n", wakefieldFamilyResponse.Resource.Id);
+            }
+            catch(CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                // Create an item in the container representing the Wakefield family. Note we provide the value of the partition key for this item, which is "Wakefield"
+                ItemResponse<Family> wakefieldFamilyResponse = await this.container.CreateItemAsync<Family>(wakefieldFamily, new PartitionKey(wakefieldFamily.PartitionKey));
+
+                // Note that after creating the item, we can access the body of the item with the Resource property off the ItemResponse. We can also access the RequestCharge property to see the amount of RUs consumed on this request.
+                Console.WriteLine("Created item in database with id: {0} Operation consumed {1} RUs.\n", wakefieldFamilyResponse.Resource.Id, wakefieldFamilyResponse.RequestCharge);
+            }
+        }
+        // </AddItemsToContainerAsync>
+
+        // <QueryItemsAsync>
+        /// <summary>
+        /// Run a query (using Azure Cosmos DB SQL syntax) against the container
+        /// Including the partition key value of lastName in the WHERE filter results in a more efficient query
+        /// </summary>
+        private async Task QueryItemsAsync()
+        {
+            var sqlQueryText = "SELECT * FROM c WHERE c.PartitionKey = 'Andersen'";
+
+            Console.WriteLine("Running query: {0}\n", sqlQueryText);
+
+            QueryDefinition queryDefinition = new QueryDefinition(sqlQueryText);
+            FeedIterator<Family> queryResultSetIterator = this.container.GetItemQueryIterator<Family>(queryDefinition);
+
+            List<Family> families = new List<Family>();
+
+            while (queryResultSetIterator.HasMoreResults)
+            {
+                FeedResponse<Family> currentResultSet = await queryResultSetIterator.ReadNextAsync();
+                foreach (Family family in currentResultSet)
+                {
+                    families.Add(family);
+                    Console.WriteLine("\tRead {0}\n", family);
+                }
+            }
+        }
+        // </QueryItemsAsync>
+
+        // <ReplaceFamilyItemAsync>
+        /// <summary>
+        /// Replace an item in the container
+        /// </summary>
+        private async Task ReplaceFamilyItemAsync()
+        {
+            ItemResponse<Family> wakefieldFamilyResponse = await this.container.ReadItemAsync<Family>("Wakefield.7", new PartitionKey("Wakefield"));
+            var itemBody = wakefieldFamilyResponse.Resource;
+            
+            // update registration status from false to true
+            itemBody.IsRegistered = true;
+            // update grade of child
+            itemBody.Children[0].Grade = 6;
+
+            // replace the item with the updated content
+            wakefieldFamilyResponse = await this.container.ReplaceItemAsync<Family>(itemBody, itemBody.Id, new PartitionKey(itemBody.PartitionKey));
+            Console.WriteLine("Updated Family [{0},{1}].\n \tBody is now: {2}\n", itemBody.LastName, itemBody.Id, wakefieldFamilyResponse.Resource);
+        }
+        // </ReplaceFamilyItemAsync>
+
+        // <DeleteFamilyItemAsync>
+        /// <summary>
+        /// Delete an item in the container
+        /// </summary>
+        private async Task DeleteFamilyItemAsync()
+        {
+            var partitionKeyValue = "Wakefield";
+            var familyId = "Wakefield.7";
+
+            // Delete an item. Note we must provide the partition key value and id of the item to delete
+            ItemResponse<Family> wakefieldFamilyResponse = await this.container.DeleteItemAsync<Family>(familyId,new PartitionKey(partitionKeyValue));
+            Console.WriteLine("Deleted Family [{0},{1}]\n", partitionKeyValue, familyId);
+        }
+        // </DeleteFamilyItemAsync>
+
+        // <DeleteDatabaseAndCleanupAsync>
+        /// <summary>
+        /// Delete the database and dispose of the Cosmos Client instance
+        /// </summary>
+        private async Task DeleteDatabaseAndCleanupAsync()
+        {
+            DatabaseResponse databaseResourceResponse = await this.database.DeleteAsync();
+            // Also valid: await this.cosmosClient.Databases["FamilyDatabase"].DeleteAsync();
+
+            Console.WriteLine("Deleted Database: {0}\n", this.databaseId);
+
+            //Dispose of CosmosClient
+            this.cosmosClient.Dispose();
+        }
+        // </DeleteDatabaseAndCleanupAsync>
+    }
+}
+```
+
+## 4. Build and run the application in Visual Studio 2022 and then navigate to Azure portal to check the results
+
+![image](https://github.com/luiscoco/Azure_SDK_Sample22_Create_CosmosDB_Database_Collection_and_Documents_LEGACY_VERSION/assets/32194879/83517918-c08e-4e3e-b8e7-17068797fe54)
+
+![image](https://github.com/luiscoco/Azure_SDK_Sample22_Create_CosmosDB_Database_Collection_and_Documents_LEGACY_VERSION/assets/32194879/c8a29287-b656-435b-bc6c-07377c345da3)
+
