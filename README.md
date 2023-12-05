@@ -1,4 +1,4 @@
-# Azure SDK for .NET: How to create an Azure CosmosDB DataBase, a Collection and populate it with some Documents.
+# LEGACY VERSION Azure SDK for .NET: How to create an Azure CosmosDB DataBase, a Collection and populate it with some Documents.
 
 ## 1. Create an Azure CosmosDB account
 
@@ -12,7 +12,7 @@ It is mandatory to set in the appSettings.json file the "**EndpointUri**" and th
 
 ![image](https://github.com/luiscoco/Azure_SDK_Sample22_Create_CosmosDB_Database_Collection_and_Documents_LEGACY_VERSION/assets/32194879/566552f5-d9d9-4414-bcbb-b023e7ff89fd)
 
-```json
+```
 <?xml version="1.0" encoding="utf-8" ?>
 <configuration>
   <appSettings>
